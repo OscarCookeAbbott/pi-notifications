@@ -34,7 +34,7 @@ function harness(t: TestContext, settings: unknown = {}) {
 test("defaults notify only when fully settled, with no tool input or output", async (t) => {
   const writes = terminal(t);
   const h = harness(t);
-  await h.emit("agent_end");
+  await h.emit("agent_end", { messages: [] });
   await h.emit("tool_execution_start", { toolName: "bash", args: { command: "SECRET" } });
   await h.emit("tool_execution_end", { toolName: "bash", isError: false, result: "SECRET" });
   assert.equal(writes.length, 0);
@@ -53,7 +53,7 @@ test("configured lifecycle triggers and optional extension API share event filte
   const h = harness(t, { notifications: { events: { agent_settled: false, turn_end: true, agent_end: true, tool_call: true, tool_result: true, "tasks.add": false } } });
   await h.emit("agent_settled");
   await h.emit("turn_end");
-  await h.emit("agent_end");
+  await h.emit("agent_end", { messages: [] });
   await h.emit("tool_execution_start", { toolName: "read" });
   await h.emit("tool_execution_end", { toolName: "read", isError: false });
   assert.equal(writes.length, 4);
@@ -63,7 +63,7 @@ test("configured lifecycle triggers and optional extension API share event filte
   assert.match(writes[4], /Pi Tasks;Finished/);
   assert.deepEqual(await h.service.notify({ event: "custom", message: "Custom notification" }), { success: true });
   assert.match(writes[5], /Custom notification/);
-  for (const payload of [null, {}, { event: "", message: "hi" }, { event: "test", message: " " }, { event: "test", message: "hi", title: 3 }]) {
+  for (const payload of [null, {}, { event: "", message: "hi" }, { event: "test", message: " " }, { event: "test", message: "hi", title: 3 }, { event: "test", message: "hi", detail: 3 }]) {
     assert.equal((await h.service.notify(payload as NotificationPayload)).success, false);
   }
   assert.equal(writes.length, 6);
@@ -153,4 +153,33 @@ test("synchronous preparation replaces one notification without mutating callers
   await h.emit("agent_settled");
   assert.match(writes[2], /;Agent finished\.\x07$/);
   assert.match(h.notices[0], /invalid prepared text/);
+});
+
+test("settled previews use the final assistant text and survive summary replacement without leaking stale output", async (t) => {
+  const writes = terminal(t);
+  const h = harness(t);
+  const assistant = (content: unknown[]) => ({ role: "assistant", content });
+  h.emit("agent_start");
+  await h.emit("agent_end", { messages: [
+    assistant([{ type: "text", text: "Earlier reply" }]),
+    assistant([{ type: "thinking", thinking: "PRIVATE_THINKING" }, { type: "text", text: "First line\r\nLast visible line\x1b[0m \r\n\r\n" }]),
+    { role: "toolResult", content: [{ type: "text", text: "PRIVATE_TOOL_OUTPUT" }] },
+  ] });
+  await h.emit("agent_settled");
+  assert.equal(writes[0], "\x1b]777;notify;Pi;Agent finished. Last visible line\x07");
+  const off = h.events.on("notifications:prepare", (value) => {
+    (value as NotificationPayload).message = "Agent finished. Jobs running: [ab].";
+  });
+  await h.emit("agent_settled");
+  assert.equal(writes[1], "\x1b]777;notify;Pi;Agent finished. Jobs running: [ab]. Last visible line\x07");
+  off();
+  h.emit("agent_start");
+  await h.emit("agent_settled");
+  assert.equal(writes[2], "\x1b]777;notify;Pi;Agent finished.\x07");
+  for (const messages of [[], [assistant([{ type: "text", text: "Outdated reply" }]), assistant([{ type: "thinking", thinking: "PRIVATE_THINKING" }])]]) {
+    await h.emit("agent_end", { messages });
+    await h.emit("agent_settled");
+    assert.equal(writes.at(-1), "\x1b]777;notify;Pi;Agent finished.\x07");
+  }
+  assert.ok(writes.every((text) => !text.includes("PRIVATE")));
 });

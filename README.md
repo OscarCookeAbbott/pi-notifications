@@ -38,7 +38,7 @@ Merge a `notifications` object into `~/.pi/agent/settings.json` or trusted proje
 }
 ```
 
-Pi supplies merged global/project settings. Omitted settings use defaults. Only `agent_settled` is enabled by default, with the message `Agent finished.`. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
+Pi supplies merged global/project settings. Omitted settings use defaults. Only `agent_settled` is enabled by default, with the summary `Agent finished.` followed by the last nonblank line of the final assistant message, when available. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
 
 - `agent_settled`: ready for input after all automatic continuations and queued work.
 - `agent_end`: each agent run ends; queued work can still follow.
@@ -48,6 +48,8 @@ Pi supplies merged global/project settings. Omitted settings use defaults. Only 
 - `permission_ask`: consumes the `permissions:ask` event from compatible permission extensions.
 
 Tool notifications contain only the tool name and status, never arguments or output. Per-tool notifications can be noisy and are opt-in. Turn-end notifications occur after each model/tool turn and are off by default; `agent_settled` waits until the agent is fully done, including queued work and automatic continuations.
+
+The final-output preview uses only text blocks from the latest run's final assistant message, never thinking or tool output. Empty/textless final messages omit the preview, and a new run or session clears previous text. The preview may contain sensitive output and may appear on your lock screen. It shares the existing 1,000-character notification limit with the summary.
 
 ### Backends
 
@@ -85,6 +87,7 @@ interface NotificationsService {
     event: string;
     title?: string;
     message: string;
+    detail?: string;
   }): Promise<{ success: boolean; skipped?: boolean; error?: string }>;
 }
 
@@ -98,20 +101,20 @@ const result = await notifications?.notify({
 });
 ```
 
-`success: true, skipped: true` means disabled, filtered, not started, or unavailable terminal/mode. Failures have `success: false` and an `error`. The title defaults to `Pi`. The symbol and types are exported from `src/index.ts`. On shutdown the extension unsubscribes event listeners and removes only its own singleton; stale service calls fail until that runtime starts another session.
+`success: true, skipped: true` means disabled, filtered, not started, or unavailable terminal/mode. Failures have `success: false` and an `error`. The title defaults to `Pi`. Optional `detail` text is appended after the message and shares its sanitisation and length limits. The symbol and types are exported from `src/index.ts`. On shutdown the extension unsubscribes event listeners and removes only its own singleton; stale service calls fail until that runtime starts another session.
 
 ### Prepare notification text
 
-Immediately before dispatch, `notifications:prepare` receives a mutable draft `{ event, title, message }`. Synchronous listeners may replace `title` and `message`; no additional notification is sent:
+Immediately before dispatch, `notifications:prepare` receives a mutable draft `{ event, title, message, detail? }`. Synchronous listeners may replace `title`, `message` and `detail`; no additional notification is sent:
 
 ```ts
 const off = pi.events.on("notifications:prepare", (value) => {
-  const draft = value as { event: string; title: string; message: string };
+  const draft = value as { event: string; title: string; message: string; detail?: string };
   if (draft.event === "agent_settled") draft.message = "Agent finished. Background work remains.";
 });
 ```
 
-Scope listeners to your extension/session lifecycle and call `off()` during cleanup. Listeners must complete synchronously: asynchronous preparation is not awaited. Do not send another notification from a preparation listener. Event filters run first and cannot be bypassed by changing the draft's event. The caller's payload is not mutated. Invalid prepared text falls back to the original notification, and all prepared text still passes through backend sanitisation and length limits.
+Scope listeners to your extension/session lifecycle and call `off()` during cleanup. Listeners must complete synchronously: asynchronous preparation is not awaited. Do not send another notification from a preparation listener. Event filters run first and cannot be bypassed by changing the draft's event. The caller's payload is not mutated. Replacing `message` leaves `detail` intact, so running-job summaries preserve the final-output preview. Invalid prepared text falls back to the original notification, and all prepared text still passes through backend sanitisation and length limits.
 
 ## Task and job integrations
 

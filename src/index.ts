@@ -1,3 +1,4 @@
+import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { isObject, readConfig } from "./config.ts";
 import { deliverNotification, PI_NOTIFICATIONS_KEY, type NotificationPayload, type NotificationsService } from "./delivery.ts";
@@ -12,6 +13,7 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
   let shutdown = new AbortController();
   let unsubscribe: Array<() => void> = [];
   let warned = false;
+  let finalOutputLine: string | undefined;
 
   function warn(message: string): void {
     if (warned) return;
@@ -22,25 +24,27 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
   const service: NotificationsService = {
     async notify(payload) {
       if (shutdown.signal.aborted) return { success: false, error: "Notifications service is shut down." };
-      if (!isObject(payload) || typeof payload.event !== "string" || !payload.event.trim() || typeof payload.message !== "string" || !payload.message.trim() || (payload.title !== undefined && typeof payload.title !== "string")) {
-        return { success: false, error: "A notification requires an event and nonblank message, with an optional string title." };
+      if (!isObject(payload) || typeof payload.event !== "string" || !payload.event.trim() || typeof payload.message !== "string" || !payload.message.trim() || (payload.title !== undefined && typeof payload.title !== "string") || (payload.detail !== undefined && typeof payload.detail !== "string")) {
+        return { success: false, error: "A notification requires an event and nonblank message, with optional string title and detail." };
       }
       if (!context || !config.enabled || config.events[payload.event] === false) return { success: true, skipped: true };
       if (context.mode !== "tui" && config.backend !== "native") return { success: true, skipped: true };
-      const draft = { event: payload.event, title: payload.title ?? "Pi", message: payload.message };
+      const draft = { event: payload.event, title: payload.title ?? "Pi", message: payload.message, detail: payload.detail };
       try {
         pi.events.emit("notifications:prepare", draft);
       } catch {
         warn("Pi notifications: preparation failed; using the original notification.");
         draft.title = payload.title ?? "Pi";
         draft.message = payload.message;
+        draft.detail = payload.detail;
       }
-      if (typeof draft.title !== "string" || typeof draft.message !== "string" || !draft.message.trim()) {
+      if (typeof draft.title !== "string" || typeof draft.message !== "string" || !draft.message.trim() || (draft.detail !== undefined && typeof draft.detail !== "string")) {
         warn("Pi notifications: invalid prepared text; using the original notification.");
         draft.title = payload.title ?? "Pi";
         draft.message = payload.message;
+        draft.detail = payload.detail;
       }
-      const result = await deliverNotification({ event: payload.event, title: draft.title, message: draft.message }, config.backend, shutdown.signal);
+      const result = await deliverNotification({ event: payload.event, title: draft.title, message: draft.message, detail: draft.detail }, config.backend, shutdown.signal);
       if (!result.success && !shutdown.signal.aborted) warn(`Pi notifications: ${result.error}`);
       return result;
     },
@@ -50,6 +54,7 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     context = ctx;
     warned = false;
+    finalOutputLine = undefined;
     if (shutdown.signal.aborted) shutdown = new AbortController();
     globals[PI_NOTIFICATIONS_KEY] = service;
     try {
@@ -70,13 +75,20 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
   pi.on("session_shutdown", () => {
     shutdown.abort();
     context = undefined;
+    finalOutputLine = undefined;
     unsubscribe.forEach((off) => off());
     unsubscribe = [];
     if (globals[PI_NOTIFICATIONS_KEY] === service) delete globals[PI_NOTIFICATIONS_KEY];
   });
 
-  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Agent finished." }); });
-  pi.on("agent_end", async () => { await service.notify({ event: "agent_end", message: "Agent run ended" }); });
+  pi.on("agent_start", () => { finalOutputLine = undefined; });
+  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Agent finished.", detail: finalOutputLine }); });
+  pi.on("agent_end", async (event) => {
+    const assistant = event.messages.findLast((message) => message.role === "assistant");
+    const text = assistant?.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n") ?? "";
+    finalOutputLine = stripVTControlCharacters(text).split(/\r\n?|\n/).map((line) => line.trim()).findLast((line) => line.length > 0);
+    await service.notify({ event: "agent_end", message: "Agent run ended" });
+  });
   pi.on("turn_end", async () => { await service.notify({ event: "turn_end", message: "Turn completed" }); });
   pi.on("tool_execution_start", async (event) => {
     await service.notify({ event: "tool_call", message: `Tool started: ${event.toolName}` });

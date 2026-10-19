@@ -1,6 +1,6 @@
 {
   "name": "@oscar-robin/pi-notifications",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Configurable desktop notifications and an inter-extension notification API for Pi.",
   "type": "module",
   "license": "MIT",

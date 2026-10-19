@@ -6,6 +6,7 @@ export interface NotificationPayload {
   event: string;
   title?: string;
   message: string;
+  detail?: string;
 }
 
 export interface NotificationResult {
@@ -51,7 +52,7 @@ $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
 export async function deliverNotification(payload: NotificationPayload, backend: NotificationConfig["backend"], signal: AbortSignal): Promise<NotificationResult> {
   if (signal.aborted) return { success: false, error: "Notifications service is shut down." };
   const title = safeText(payload.title ?? "Pi", 100);
-  const message = safeText(payload.message, 1000);
+  const message = safeText(payload.detail ? `${payload.message}\n${payload.detail}` : payload.message, 1000);
   try {
     if (backend === "native" || (backend === "auto" && (process.platform === "win32" || process.env.WT_SESSION))) {
       if (process.platform === "darwin") {

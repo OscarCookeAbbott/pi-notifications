@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.0
+
+- Append the last nonblank line of the final assistant text to agent-finished notifications; never use thinking, tool output or stale text from earlier runs.
+- Add optional detail text to the notification API/preparation draft, preserving final-output previews when running jobs replace the summary and sharing existing sanitisation/length limits.
+
 ## 0.2.1
 
 - Document note-content previews in task notification integrations; notification transport and preview limits are unchanged.

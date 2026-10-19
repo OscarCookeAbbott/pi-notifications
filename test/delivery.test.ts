@@ -11,8 +11,8 @@ test("terminal backends escape untrusted content, support Kitty and tmux, and bo
   assert.equal(writes[0], "\x1b]777;notify;Pi,title ;bad message\x07");
   process.env.KITTY_WINDOW_ID = "1";
   process.env.TMUX = "tmux";
-  await deliverNotification({ event: "test", message: "x".repeat(2000) }, "terminal", signal);
-  assert.equal(writes[1], `\x1b]99;i=pi-notifications:d=0;Pi\x1b\\\x1b]99;i=pi-notifications:p=body;${"x".repeat(1000)}\x1b\\\x07`);
+  await deliverNotification({ event: "test", message: "Summary", detail: "x".repeat(2000) }, "terminal", signal);
+  assert.equal(writes[1], `\x1b]99;i=pi-notifications:d=0;Pi\x1b\\\x1b]99;i=pi-notifications:p=body;Summary ${"x".repeat(992)}\x1b\\\x07`);
   Object.defineProperty(process.stdout, "isTTY", { configurable: true, value: false });
   assert.deepEqual(await deliverNotification({ event: "test", message: "hi" }, "auto", signal), { success: true, skipped: true });
   assert.equal(writes.length, 2);
