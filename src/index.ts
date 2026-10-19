@@ -27,7 +27,20 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
       }
       if (!context || !config.enabled || config.events[payload.event] === false) return { success: true, skipped: true };
       if (context.mode !== "tui" && config.backend !== "native") return { success: true, skipped: true };
-      const result = await deliverNotification(payload, config.backend, shutdown.signal);
+      const draft = { event: payload.event, title: payload.title ?? "Pi", message: payload.message };
+      try {
+        pi.events.emit("notifications:prepare", draft);
+      } catch {
+        warn("Pi notifications: preparation failed; using the original notification.");
+        draft.title = payload.title ?? "Pi";
+        draft.message = payload.message;
+      }
+      if (typeof draft.title !== "string" || typeof draft.message !== "string" || !draft.message.trim()) {
+        warn("Pi notifications: invalid prepared text; using the original notification.");
+        draft.title = payload.title ?? "Pi";
+        draft.message = payload.message;
+      }
+      const result = await deliverNotification({ event: payload.event, title: draft.title, message: draft.message }, config.backend, shutdown.signal);
       if (!result.success && !shutdown.signal.aborted) warn(`Pi notifications: ${result.error}`);
       return result;
     },
@@ -62,7 +75,7 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
     if (globals[PI_NOTIFICATIONS_KEY] === service) delete globals[PI_NOTIFICATIONS_KEY];
   });
 
-  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Ready for input" }); });
+  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Agent finished." }); });
   pi.on("agent_end", async () => { await service.notify({ event: "agent_end", message: "Agent run ended" }); });
   pi.on("turn_end", async () => { await service.notify({ event: "turn_end", message: "Turn completed" }); });
   pi.on("tool_execution_start", async (event) => {

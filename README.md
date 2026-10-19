@@ -26,9 +26,9 @@ Merge a `notifications` object into `~/.pi/agent/settings.json` or trusted proje
     "enabled": true,
     "backend": "auto",
     "events": {
-      "agent_settled": false,
+      "agent_settled": true,
       "agent_end": false,
-      "turn_end": true,
+      "turn_end": false,
       "tool_call": false,
       "tool_result": false,
       "tool_error": false,
@@ -38,7 +38,7 @@ Merge a `notifications` object into `~/.pi/agent/settings.json` or trusted proje
 }
 ```
 
-Pi supplies merged global/project settings. Omitted settings use defaults. Only `turn_end` is enabled by default. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
+Pi supplies merged global/project settings. Omitted settings use defaults. Only `agent_settled` is enabled by default, with the message `Agent finished.`. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
 
 - `agent_settled`: ready for input after all automatic continuations and queued work.
 - `agent_end`: each agent run ends; queued work can still follow.
@@ -47,7 +47,7 @@ Pi supplies merged global/project settings. Omitted settings use defaults. Only 
 - `tool_result`: successful tool execution ends. Failures use `tool_error` instead, avoiding duplicate notifications when both are enabled.
 - `permission_ask`: consumes the `permissions:ask` event from compatible permission extensions.
 
-Tool notifications contain only the tool name and status, never arguments or output. Per-tool notifications can be noisy and are opt-in. Turn-end notifications occur after each model/tool turn, not just once when the agent is ready for input; use `agent_settled` instead if you prefer that boundary.
+Tool notifications contain only the tool name and status, never arguments or output. Per-tool notifications can be noisy and are opt-in. Turn-end notifications occur after each model/tool turn and are off by default; `agent_settled` waits until the agent is fully done, including queued work and automatic continuations.
 
 ### Backends
 
@@ -100,11 +100,24 @@ const result = await notifications?.notify({
 
 `success: true, skipped: true` means disabled, filtered, not started, or unavailable terminal/mode. Failures have `success: false` and an `error`. The title defaults to `Pi`. The symbol and types are exported from `src/index.ts`. On shutdown the extension unsubscribes event listeners and removes only its own singleton; stale service calls fail until that runtime starts another session.
 
+### Prepare notification text
+
+Immediately before dispatch, `notifications:prepare` receives a mutable draft `{ event, title, message }`. Synchronous listeners may replace `title` and `message`; no additional notification is sent:
+
+```ts
+const off = pi.events.on("notifications:prepare", (value) => {
+  const draft = value as { event: string; title: string; message: string };
+  if (draft.event === "agent_settled") draft.message = "Agent finished. Background work remains.";
+});
+```
+
+Scope listeners to your extension/session lifecycle and call `off()` during cleanup. Listeners must complete synchronously: asynchronous preparation is not awaited. Do not send another notification from a preparation listener. Event filters run first and cannot be bypassed by changing the draft's event. The caller's payload is not mutated. Invalid prepared text falls back to the original notification, and all prepared text still passes through backend sanitisation and length limits.
+
 ## Task and job integrations
 
 `pi-tasks` and `pi-async-jobs` declare this package as an optional Git dependency. Load `pi-notifications` once as a Pi package: installing a dependency does not automatically register its extension, and dependency copies should not be added as duplicate extension entries.
 
-Both integrations default to **off**. Opt in through Pi settings:
+Task/job-change notifications default to **off**. Opt in through Pi settings:
 
 ```json
 {
@@ -115,6 +128,8 @@ Both integrations default to **off**. Opt in through Pi settings:
 
 - `tasks.notifications`: `none` (default), `tasks`, `notes`, or `all`. Emits after persisted task/note mutations and saved visibility changes. Events: `tasks.add`, `tasks.edit`, `tasks.move`, `tasks.complete`, `tasks.cancel`, `tasks.visibility`, `task_notes.record`, `task_notes.retract`, `task_notes.visibility`.
 - `asyncJobs.notifications`: `none` (default), `started`, `completed`, or `all`. `all` also includes input sends and explicit termination. Events: `jobs.started`, `jobs.completed`, `jobs.input`, `jobs.terminated`. Job output is not streamed into notifications.
+
+Independently of job-change settings, `pi-async-jobs` augments an enabled `agent_settled` notification while jobs run: `Agent finished. Jobs running: [ab], [cd].` It replaces the default text before dispatch rather than sending a duplicate, and leaves the default unchanged with no running jobs. Up to ten live job IDs are listed, with a remaining count for larger sets. Command text is intentionally excluded.
 
 Task messages contain IDs, titles and status, not descriptions, outcomes or note contents. A task operation includes any automatically closed ancestors; parents with unfinished children are described as waiting. Job messages contain IDs and status, never command text, input or logs. Reads, lists, restoration and failed mutations do not notify. Normal task results and the existing agent-facing async-job completion messages are unaffected by desktop notification settings or failures.
 

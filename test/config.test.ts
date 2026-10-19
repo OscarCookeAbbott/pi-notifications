@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readConfig } from "../src/config.ts";
 
-test("defaults enable only turn end; partial settings preserve other defaults", () => {
-  assert.deepEqual(Object.entries(readConfig({}).events).filter(([, enabled]) => enabled).map(([event]) => event), ["turn_end"]);
+test("defaults enable only agent settled; partial settings preserve other defaults", () => {
+  assert.deepEqual(Object.entries(readConfig({}).events).filter(([, enabled]) => enabled).map(([event]) => event), ["agent_settled"]);
   const config = readConfig({ notifications: { backend: "native", events: { turn_end: true, "tasks.add": false } } });
   assert.equal(config.enabled, true);
   assert.equal(config.backend, "native");
-  assert.equal(config.events.agent_settled, false);
+  assert.equal(config.events.agent_settled, true);
   assert.equal(config.events.turn_end, true);
   assert.equal(config.events.tool_call, false);
   assert.equal(config.events.tool_error, false);

@@ -31,20 +31,20 @@ function harness(t: TestContext, settings: unknown = {}) {
   return { events, notices, ctx, service, emit, command: (args: string) => command.handler(args, ctx as ExtensionCommandContext) };
 }
 
-test("defaults notify only at turn end, with no tool input or output", async (t) => {
+test("defaults notify only when fully settled, with no tool input or output", async (t) => {
   const writes = terminal(t);
   const h = harness(t);
   await h.emit("agent_end");
   await h.emit("tool_execution_start", { toolName: "bash", args: { command: "SECRET" } });
   await h.emit("tool_execution_end", { toolName: "bash", isError: false, result: "SECRET" });
   assert.equal(writes.length, 0);
-  await h.emit("agent_settled");
+  await h.emit("turn_end");
   await h.emit("tool_execution_end", { toolName: "bash", isError: true, result: "SECRET" });
   h.events.emit("permissions:ask", { toolName: "write", input: "SECRET" });
   assert.equal(writes.length, 0);
-  await h.emit("turn_end");
+  await h.emit("agent_settled");
   assert.equal(writes.length, 1);
-  assert.match(writes[0], /Turn completed/);
+  assert.match(writes[0], /Agent finished\./);
   assert.ok(writes.every((text) => !text.includes("SECRET")));
 });
 
@@ -84,7 +84,7 @@ test("commands control the session and headless mode cannot emit terminal escape
   await h.command("invalid");
   assert.match(h.notices.at(-1)!, /Usage:/);
   Reflect.set(h.ctx, "mode", "json");
-  await h.emit("turn_end");
+  await h.emit("agent_settled");
   assert.equal(writes.length, 1);
 });
 
@@ -92,7 +92,7 @@ test("invalid settings disable notifications and shutdown cleans up listeners sa
   const writes = terminal(t);
   const h = harness(t, { notifications: { enabled: "yes" } });
   assert.match(h.notices[0], /disabled/);
-  await h.emit("turn_end");
+  await h.emit("agent_settled");
   assert.equal(writes.length, 0);
   const replacement = { ...h.service };
   globals[PI_NOTIFICATIONS_KEY] = replacement;
@@ -114,8 +114,8 @@ test("shutdown aborts native delivery; backend errors warn once without interrup
     (args[3] as (error: Error) => void)(new Error("missing notification command"));
     return { stdin: { on() {}, end() {} } };
   });
-  await h.emit("turn_end");
-  await h.emit("turn_end");
+  await h.emit("agent_settled");
+  await h.emit("agent_settled");
   assert.equal(h.notices.length, 1);
   t.mock.method(childProcess, "execFile", (...args: unknown[]) => {
     const { signal } = args[2] as { signal: AbortSignal };
@@ -125,4 +125,32 @@ test("shutdown aborts native delivery; backend errors warn once without interrup
   const pending = h.service.notify({ event: "custom", message: "hello" });
   h.emit("session_shutdown");
   assert.deepEqual(await pending, { success: false, error: "Notifications service is shut down." });
+});
+
+test("synchronous preparation replaces one notification without mutating callers or bypassing filters", async (t) => {
+  const writes = terminal(t);
+  const h = harness(t);
+  let prepared = 0;
+  const off = h.events.on("notifications:prepare", (value) => {
+    const draft = value as NotificationPayload;
+    prepared++;
+    draft.event = "tool_call";
+    draft.message = "Agent finished. Jobs running: [ab], [cd].";
+  });
+  const payload = { event: "agent_settled", message: "Agent finished." };
+  assert.deepEqual(await h.service.notify(payload), { success: true });
+  assert.equal(writes.length, 1);
+  assert.match(writes[0], /Jobs running: \[ab\], \[cd\]\./);
+  assert.equal(payload.message, "Agent finished.");
+  assert.equal(payload.event, "agent_settled");
+  await h.emit("turn_end");
+  assert.equal(prepared, 1);
+  assert.equal(writes.length, 1);
+  off();
+  await h.emit("agent_settled");
+  assert.match(writes[1], /;Agent finished\.\x07$/);
+  h.events.on("notifications:prepare", (value) => { (value as NotificationPayload).message = " "; });
+  await h.emit("agent_settled");
+  assert.match(writes[2], /;Agent finished\.\x07$/);
+  assert.match(h.notices[0], /invalid prepared text/);
 });

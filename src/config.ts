@@ -9,9 +9,9 @@ export function readConfig(settings: unknown): NotificationConfig {
     enabled: true,
     backend: "auto",
     events: {
-      agent_settled: false,
+      agent_settled: true,
       agent_end: false,
-      turn_end: true,
+      turn_end: false,
       tool_call: false,
       tool_result: false,
       tool_error: false,
