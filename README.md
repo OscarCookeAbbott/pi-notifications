@@ -38,7 +38,7 @@ Merge a `notifications` object into `~/.pi/agent/settings.json` or trusted proje
 }
 ```
 
-Pi supplies merged global/project settings. Omitted settings use defaults. Only `agent_settled` is enabled by default, with the summary `Agent finished.` followed by the last nonblank line of the final assistant message, when available. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
+Pi supplies merged global/project settings. Omitted settings use defaults. Only `agent_settled` is enabled by default, with the summary `Agent finished:` followed by the last nonblank line of the final assistant message, when available. **Custom API event names are accepted unless explicitly set to `false`**; task and job integrations are separately opt-in at the sender. Invalid configuration warns and disables delivery rather than accidentally enabling it.
 
 - `agent_settled`: ready for input after all automatic continuations and queued work.
 - `agent_end`: each agent run ends; queued work can still follow.
@@ -110,7 +110,7 @@ Immediately before dispatch, `notifications:prepare` receives a mutable draft `{
 ```ts
 const off = pi.events.on("notifications:prepare", (value) => {
   const draft = value as { event: string; title: string; message: string; detail?: string };
-  if (draft.event === "agent_settled") draft.message = "Agent finished. Background work remains.";
+  if (draft.event === "agent_settled") draft.message = "Agent finished: Background work remains.";
 });
 ```
 
@@ -132,7 +132,7 @@ Task/job-change notifications default to **off**. Opt in through Pi settings:
 - `tasks.notifications`: `none` (default), `tasks`, `notes`, or `all`. Emits after persisted task/note mutations and saved visibility changes. Events: `tasks.add`, `tasks.edit`, `tasks.move`, `tasks.complete`, `tasks.cancel`, `tasks.visibility`, `task_notes.record`, `task_notes.retract`, `task_notes.visibility`.
 - `asyncJobs.notifications`: `none` (default), `started`, `completed`, or `all`. `all` also includes input sends and explicit termination. Events: `jobs.started`, `jobs.completed`, `jobs.input`, `jobs.terminated`. Job output is not streamed into notifications.
 
-Independently of job-change settings, `pi-async-jobs` augments an enabled `agent_settled` notification while jobs run: `Agent finished. Jobs running: [ab], [cd].` It replaces the default text before dispatch rather than sending a duplicate, and leaves the default unchanged with no running jobs. Up to ten live job IDs are listed, with a remaining count for larger sets. Command text is intentionally excluded.
+Independently of job-change settings, `pi-async-jobs` augments an enabled `agent_settled` notification while jobs run: `Agent finished: Jobs running: [ab], [cd].` It replaces the default text before dispatch rather than sending a duplicate, and leaves the default unchanged with no running jobs. Up to ten live job IDs are listed, with a remaining count for larger sets. Command text is intentionally excluded.
 
 Task messages contain IDs, titles and status, not descriptions or outcomes. Note recording/retraction messages also include the original note text, subject to backend length and desktop display limits. A task operation includes any automatically closed ancestors; parents with unfinished children are described as waiting. Job messages contain IDs and status, never command text, input or logs. Reads, lists, restoration and failed mutations do not notify. Normal task results and the existing agent-facing async-job completion messages are unaffected by desktop notification settings or failures.
 

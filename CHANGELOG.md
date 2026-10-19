@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- Use a colon after `Agent finished` before the final-output preview.
+
 ## 0.3.0
 
 - Append the last nonblank line of the final assistant text to agent-finished notifications; never use thinking, tool output or stale text from earlier runs.

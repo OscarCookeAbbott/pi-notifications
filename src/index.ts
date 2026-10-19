@@ -82,7 +82,7 @@ export default function notificationsExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("agent_start", () => { finalOutputLine = undefined; });
-  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Agent finished.", detail: finalOutputLine }); });
+  pi.on("agent_settled", async () => { await service.notify({ event: "agent_settled", message: "Agent finished:", detail: finalOutputLine }); });
   pi.on("agent_end", async (event) => {
     const assistant = event.messages.findLast((message) => message.role === "assistant");
     const text = assistant?.content.flatMap((part) => part.type === "text" ? [part.text] : []).join("\n") ?? "";

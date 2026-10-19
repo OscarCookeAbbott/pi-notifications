@@ -44,7 +44,7 @@ test("defaults notify only when fully settled, with no tool input or output", as
   assert.equal(writes.length, 0);
   await h.emit("agent_settled");
   assert.equal(writes.length, 1);
-  assert.match(writes[0], /Agent finished\./);
+  assert.match(writes[0], /Agent finished:/);
   assert.ok(writes.every((text) => !text.includes("SECRET")));
 });
 
@@ -135,23 +135,23 @@ test("synchronous preparation replaces one notification without mutating callers
     const draft = value as NotificationPayload;
     prepared++;
     draft.event = "tool_call";
-    draft.message = "Agent finished. Jobs running: [ab], [cd].";
+    draft.message = "Agent finished: Jobs running: [ab], [cd].";
   });
-  const payload = { event: "agent_settled", message: "Agent finished." };
+  const payload = { event: "agent_settled", message: "Agent finished:" };
   assert.deepEqual(await h.service.notify(payload), { success: true });
   assert.equal(writes.length, 1);
   assert.match(writes[0], /Jobs running: \[ab\], \[cd\]\./);
-  assert.equal(payload.message, "Agent finished.");
+  assert.equal(payload.message, "Agent finished:");
   assert.equal(payload.event, "agent_settled");
   await h.emit("turn_end");
   assert.equal(prepared, 1);
   assert.equal(writes.length, 1);
   off();
   await h.emit("agent_settled");
-  assert.match(writes[1], /;Agent finished\.\x07$/);
+  assert.match(writes[1], /;Agent finished:\x07$/);
   h.events.on("notifications:prepare", (value) => { (value as NotificationPayload).message = " "; });
   await h.emit("agent_settled");
-  assert.match(writes[2], /;Agent finished\.\x07$/);
+  assert.match(writes[2], /;Agent finished:\x07$/);
   assert.match(h.notices[0], /invalid prepared text/);
 });
 
@@ -166,20 +166,20 @@ test("settled previews use the final assistant text and survive summary replacem
     { role: "toolResult", content: [{ type: "text", text: "PRIVATE_TOOL_OUTPUT" }] },
   ] });
   await h.emit("agent_settled");
-  assert.equal(writes[0], "\x1b]777;notify;Pi;Agent finished. Last visible line\x07");
+  assert.equal(writes[0], "\x1b]777;notify;Pi;Agent finished: Last visible line\x07");
   const off = h.events.on("notifications:prepare", (value) => {
-    (value as NotificationPayload).message = "Agent finished. Jobs running: [ab].";
+    (value as NotificationPayload).message = "Agent finished: Jobs running: [ab].";
   });
   await h.emit("agent_settled");
-  assert.equal(writes[1], "\x1b]777;notify;Pi;Agent finished. Jobs running: [ab]. Last visible line\x07");
+  assert.equal(writes[1], "\x1b]777;notify;Pi;Agent finished: Jobs running: [ab]. Last visible line\x07");
   off();
   h.emit("agent_start");
   await h.emit("agent_settled");
-  assert.equal(writes[2], "\x1b]777;notify;Pi;Agent finished.\x07");
+  assert.equal(writes[2], "\x1b]777;notify;Pi;Agent finished:\x07");
   for (const messages of [[], [assistant([{ type: "text", text: "Outdated reply" }]), assistant([{ type: "thinking", thinking: "PRIVATE_THINKING" }])]]) {
     await h.emit("agent_end", { messages });
     await h.emit("agent_settled");
-    assert.equal(writes.at(-1), "\x1b]777;notify;Pi;Agent finished.\x07");
+    assert.equal(writes.at(-1), "\x1b]777;notify;Pi;Agent finished:\x07");
   }
   assert.ok(writes.every((text) => !text.includes("PRIVATE")));
 });
