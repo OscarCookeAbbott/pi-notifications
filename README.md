@@ -131,7 +131,7 @@ Task/job-change notifications default to **off**. Opt in through Pi settings:
 
 Independently of job-change settings, `pi-async-jobs` augments an enabled `agent_settled` notification while jobs run: `Agent finished. Jobs running: [ab], [cd].` It replaces the default text before dispatch rather than sending a duplicate, and leaves the default unchanged with no running jobs. Up to ten live job IDs are listed, with a remaining count for larger sets. Command text is intentionally excluded.
 
-Task messages contain IDs, titles and status, not descriptions, outcomes or note contents. A task operation includes any automatically closed ancestors; parents with unfinished children are described as waiting. Job messages contain IDs and status, never command text, input or logs. Reads, lists, restoration and failed mutations do not notify. Normal task results and the existing agent-facing async-job completion messages are unaffected by desktop notification settings or failures.
+Task messages contain IDs, titles and status, not descriptions or outcomes. Note recording/retraction messages also include the original note text, subject to backend length and desktop display limits. A task operation includes any automatically closed ancestors; parents with unfinished children are described as waiting. Job messages contain IDs and status, never command text, input or logs. Reads, lists, restoration and failed mutations do not notify. Normal task results and the existing agent-facing async-job completion messages are unaffected by desktop notification settings or failures.
 
 ## Development
 

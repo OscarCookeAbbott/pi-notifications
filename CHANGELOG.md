@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Document note-content previews in task notification integrations; notification transport and preview limits are unchanged.
+
 ## 0.2.0
 
 - Notify only on agent_settled by default, with `Agent finished.`, instead of notifying after every model/tool turn.
